@@ -1273,6 +1273,288 @@ def update_laser(dt):
             laser_active = False
             laser_timer = LASER_INTERVAL
 
+### Game State Management ###
+def end_game():
+    global game_over
+    game_over = True
+
+def reset_game():
+    global player_pos, player_angle, player_on_ground, vz
+    global ammo_in_mag, reloading, reload_timer, fire_cooldown
+    global current_weapon, ammo_reserve, owned_weapons, ammo_in_mag_by_weapon
+    global bullets, rockets, grenades, enemies, pickups
+    global score, health, paused, game_over, wave
+    global cam_x, cam_y, cam_z, scope_active, first_person
+    global gun_spawn_timer, keys_down
+    global laser_timer, laser_active, laser_t
+
+    player_pos[:] = [0.0, 0.0, 0.0]
+    player_angle = 0.0
+    player_on_ground = True
+    vz = 0.0
+
+    current_weapon = "pistol"
+    owned_weapons = {"pistol"}
+    ammo_in_mag_by_weapon = {"pistol": weapons["pistol"]["mag"], "rifle": 0, "machine_gun": 0, "rocket": 0}
+    ammo_in_mag = ammo_in_mag_by_weapon[current_weapon]
+    ammo_reserve = {"pistol": 72, "rifle": 120, "machine_gun": 180, "rocket": 12}
+
+    reloading = False; reload_timer = 0.0; fire_cooldown = 0.0
+
+    bullets.clear(); rockets.clear(); grenades.clear()
+    enemies.clear(); pickups.clear(); gen_rocks()
+
+    score = 0; health = max_health; paused = False; game_over = False
+    wave = 1; start_wave(wave)
+
+    scope_active = False; first_person = False
+    fx, fy = forward_vec(player_angle)
+    cam_x = player_pos[0] - fx*follow_dist
+    cam_y = player_pos[1] - fy*follow_dist
+    cam_z = player_pos[2] + follow_height
+
+    gun_spawn_timer = GUN_SPAWN_INTERVAL
+    keys_down.clear()
+
+    laser_timer = LASER_INTERVAL
+    laser_active = False
+    laser_t = 0.0
+
+##### Input Handling #####
+def on_key_down(key, x, y):
+    global first_person, paused, vz, landing_flash, player_on_ground
+    global current_weapon, ammo_in_mag, ammo_in_mag_by_weapon
+
+    keys_down.add(key)
+
+    if key == b' ':
+        if player_on_ground:
+            vz = JUMP_VELOCITY
+            fx, fy = forward_vec(player_angle)
+            player_pos[0] += fx * (MOVE_STEP * 0.6)
+            player_pos[1] += fy * (MOVE_STEP * 0.6)
+            landing_flash = 0.0
+            player_on_ground = False
+
+    if key == b'r':
+        try_reload()
+    if key == b'g':
+        try_throw_grenade()
+    if key == b'p':
+        paused = not paused
+    if key == b'n':
+        reset_game()
+    if key == b'f':
+        first_person = not first_person
+
+    if key == b'1' and "pistol" in owned_weapons:
+        current_weapon = "pistol"
+        ammo_in_mag = ammo_in_mag_by_weapon[current_weapon]
+    if key == b'2' and "rifle" in owned_weapons:
+        current_weapon = "rifle"
+        ammo_in_mag = ammo_in_mag_by_weapon[current_weapon]
+    if key == b'3' and "machine_gun" in owned_weapons:
+        current_weapon = "machine_gun"
+        ammo_in_mag = ammo_in_mag_by_weapon[current_weapon]
+    if key == b'4' and "rocket" in owned_weapons:
+        current_weapon = "rocket"
+        ammo_in_mag = ammo_in_mag_by_weapon[current_weapon]
+
+def on_key_up(key, x, y):
+    if key in keys_down: keys_down.remove(key)
+
+def specialKeyListener(key, x, y):
+    pass
+
+def mouseListener(button, state, x, y):
+    global scope_active, fire_pressed, first_person
+    if button == GLUT_LEFT_BUTTON:
+        if state == GLUT_DOWN:
+            fire_pressed = True; try_fire()
+        else:
+            fire_pressed = False
+    if button == GLUT_RIGHT_BUTTON:
+        scope_active = (state == GLUT_DOWN)
+        first_person = not first_person
+
+def process_held_keys(dt):
+    global player_angle, player_pos
+
+    if paused or game_over: return
+
+    if b'a' in keys_down or b'A' in keys_down:
+        player_angle = (player_angle + TURN_SPEED * dt) % 360.0
+    if b'd' in keys_down or b'D' in keys_down:
+        player_angle = (player_angle - TURN_SPEED * dt) % 360.0
+
+    fx, fy = forward_vec(player_angle)
+
+    move = 0.0
+    if b'w' in keys_down or b'W' in keys_down: move += 1.0
+    if b's' in keys_down or b'S' in keys_down: move -= 1.0
+
+    if move != 0.0:
+        nx = player_pos[0] + fx * MOVE_SPEED * move * dt
+        ny = player_pos[1] + fy * MOVE_SPEED * move * dt
+
+        curr_h = ground_height_at(player_pos[0], player_pos[1])
+        new_h  = ground_height_at(nx, ny)
+
+        # STEP
+        if (not player_on_ground) or (new_h <= curr_h + STEP_MAX):
+           
+            stepping_target = None
+            if player_on_ground and new_h > curr_h and new_h <= curr_h + STEP_MAX:
+                stepping_target = rock_at_point(nx, ny)
+            nx, ny = resolve_player_vs_rocks(nx, ny, player_pos[2], stepping_target_rock=stepping_target)
+            player_pos[0], player_pos[1] = clamp2D(nx, ny)
+
+### Game Loop ###
+_last_t = None
+def step(dt):
+    global player_on_ground, vz, cam_x, cam_y, cam_z, enemy_spin_phase, landing_flash, pickup_bob_phase
+    process_held_keys(dt)
+    update_laser(dt)
+    laser_kill()
+    ground_h = ground_height_at(player_pos[0], player_pos[1])
+    if not player_on_ground:
+        player_pos[2] += vz*dt
+        vz += GRAVITY*dt
+        if player_pos[2] <= ground_h and vz <= 0.0:
+            player_pos[2] = ground_h
+            vz = 0.0
+            if not player_on_ground: landing_flash = 0.25
+            player_on_ground = True
+    else:
+        follow_rate = 12.0
+        player_pos[2] += (ground_h - player_pos[2]) * min(1.0, follow_rate * dt)
+
+    if not first_person:
+        fx, fy = forward_vec(player_angle)
+        head_z = player_pos[2] + 110.0
+        dist   = 140.0 if not scope_active else 110.0
+        height = 40.0  if not scope_active else 30.0
+        target_x = player_pos[0] - fx * dist
+        target_y = player_pos[1] - fy * dist
+        target_z = head_z + height
+        alpha = min(1.0, 8.0*dt)
+        cam_x += (target_x - cam_x) * alpha
+        cam_y += (target_y - cam_y) * alpha
+        cam_z += (target_z - cam_z) * alpha
+
+    move_enemies(dt)
+    move_bullets(dt)
+    move_rockets(dt)
+    move_grenades(dt)
+    update_reload_and_cooldowns(dt)
+    collect_pickups()
+    update_timed_spawns(dt)
+    next_wave_if_cleared()
+    update_explosions(dt)
+
+    enemy_spin_phase += 2.5 * dt
+    pickup_bob_phase += 2.0 * dt
+    if landing_flash > 0.0: landing_flash = max(0.0, landing_flash - dt)
+
+def idle():
+    global _last_t, fire_pressed
+    now = time.perf_counter()
+    if _last_t is None: _last_t = now
+    dt = now - _last_t
+    if dt > 0.05: dt = 0.05
+    _last_t = now
+    if not paused and not game_over:
+        step(dt)
+        if fire_pressed: try_fire()
+    glutPostRedisplay()
+
+### HUD and Writings ###
+def show_ammo_hud():
+    mag_cap = weapons[current_weapon]["mag"]
+    big = f"{int(ammo_in_mag):02d}"
+    small = f"/{mag_cap}  RES {ammo_reserve[current_weapon]}"
+    label = current_weapon.upper()
+    panel_w, panel_h = 280, 130
+    x0, y0 = WINDOW_W - panel_w - 20, 20
+    glMatrixMode(GL_PROJECTION)
+    glPushMatrix()
+    glLoadIdentity()
+    gluOrtho2D(0, WINDOW_W, 0, WINDOW_H)
+    glMatrixMode(GL_MODELVIEW)
+    glPushMatrix()
+    glLoadIdentity()
+    glColor3f(0.05, 0.06, 0.07)
+    glBegin(GL_QUADS)
+    glVertex3f(x0, y0, 0)
+    glVertex3f(x0+panel_w, y0, 0)
+    glVertex3f(x0+panel_w, y0+panel_h, 0)
+    glVertex3f(x0, y0+panel_h, 0)
+    glEnd()
+    glColor3f(0.18, 0.82, 0.40)
+    glBegin(GL_QUADS)
+    glVertex3f(x0, y0+panel_h-6, 0)
+    glVertex3f(x0+panel_w, y0+panel_h-6, 0)
+    glVertex3f(x0+panel_w, y0+panel_h, 0)
+    glVertex3f(x0, y0+panel_h, 0)
+    glEnd()
+    glRasterPos2f(x0+16, y0+68)
+    for ch in big:
+        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(ch))
+        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(' '))
+    glRasterPos2f(x0+16, y0+42)
+    for ch in small:
+        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(ch))
+    glRasterPos2f(x0+16, y0+20)
+    for ch in label:
+        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(ch))
+    if laser_active:
+        glRasterPos2f(x0+16, y0+92)
+        for ch in "!!! LASERS SWEEPING !!!":
+            glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(ch))
+    if reloading:
+        bar_x, bar_y, bar_w, bar_h = x0+16, y0+90, panel_w-32, 10
+        glColor3f(0.18, 0.18, 0.20)
+        glBegin(GL_QUADS)
+        glVertex3f(bar_x, bar_y, 0); glVertex3f(bar_x+bar_w, bar_y, 0)
+        glVertex3f(bar_x+bar_w, bar_y+bar_h, 0); glVertex3f(bar_x, bar_y+bar_h, 0)
+        glEnd()
+        prog = 1.0 - max(0.0, reload_timer) / reload_time
+        fill_w = int(bar_w * max(0.0, min(1.0, prog)))
+        glColor3f(0.18, 0.82, 0.40)
+        glBegin(GL_QUADS)
+        glVertex3f(bar_x, bar_y, 0); glVertex3f(bar_x+fill_w, bar_y, 0)
+        glVertex3f(bar_x+fill_w, bar_y+bar_h, 0); glVertex3f(bar_x, bar_y+bar_h, 0)
+        glEnd()
+        glRasterPos2f(bar_x, bar_y+bar_h+6)
+        for ch in "RELOADING":
+            glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(ch))
+    else:
+        if ammo_in_mag == 0:
+            if ammo_reserve[current_weapon] > 0:
+                glColor3f(0.95, 0.55, 0.10); msg = "EMPTY — press R"
+            else:
+                glColor3f(0.90, 0.20, 0.20); msg = "OUT OF AMMO"
+            glRasterPos2f(x0+16, y0+92)
+            for ch in msg:
+                glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(ch))
+    glPopMatrix(); glMatrixMode(GL_PROJECTION); glPopMatrix(); glMatrixMode(GL_MODELVIEW)
+
+def show_hud():
+    glDisable(GL_DEPTH_TEST)
+    draw_text(10, WINDOW_H - 30, f"Score: {score}  Health: {int(health)}/{max_health}  Wave: {wave}")
+    if paused:
+        draw_text(WINDOW_W//2 - 40, WINDOW_H - 30, "PAUSED")
+    else:
+        if not laser_active:
+            secs = int(math.ceil(laser_timer))
+            cx = WINDOW_W // 2
+            cy = WINDOW_H - 30
+            draw_text(cx, cy, f"Time Remains: {secs}", GLUT_BITMAP_HELVETICA_18)
+            if secs <= 10:
+                draw_text(cx, cy - 30, "Climb Up!!", GLUT_BITMAP_HELVETICA_18)
+    show_ammo_hud()
+    show_scope_overlay()
+    glEnable(GL_DEPTH_TEST)
 
 
 
