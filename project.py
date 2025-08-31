@@ -1556,36 +1556,64 @@ def show_hud():
     show_scope_overlay()
     glEnable(GL_DEPTH_TEST)
 
+### Drawing the World ###
+def draw_world():
+    draw_grass_ground()
+    draw_rocks()
+    for b in bullets: draw_bullet(b)
+    for r in rockets: draw_rocket(r)
+    for g in grenades: draw_grenade(g)
+    draw_explosions()
+    for p in pickups: draw_pickup(p)
+    for e in enemies: draw_enemy(e)
+    draw_laser_sweep()
+    draw_player()
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+### Main Display Function ###
+def showScreen():
+    glClearColor(0.05, 0.07, 0.09, 1.0)
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+    glLoadIdentity()
+    glViewport(0, 0, WINDOW_W, WINDOW_H)
+    setupCamera()
+    draw_world()
+    show_hud()
+    if game_over:
+        glMatrixMode(GL_PROJECTION)
+        glPushMatrix()
+        glLoadIdentity()
+        gluOrtho2D(0, WINDOW_W, 0, WINDOW_H)
+        glMatrixMode(GL_MODELVIEW)
+        glPushMatrix()
+        glLoadIdentity()
+        glDisable(GL_DEPTH_TEST)
+        panel_w, panel_h = 360, 140
+        px = (WINDOW_W - panel_w) // 2
+        py = (WINDOW_H - panel_h) // 2
+        glColor3f(0.06, 0.06, 0.08)
+        glBegin(GL_QUADS)
+        glVertex3f(px,             py,              0)
+        glVertex3f(px + panel_w,   py,              0)
+        glVertex3f(px + panel_w,   py + panel_h,    0)
+        glVertex3f(px,             py + panel_h,    0)
+        glEnd()
+        title = "GAME OVER"
+        hint  = "Press N to start a new run"
+        def _bitmap_width(s, font=GLUT_BITMAP_HELVETICA_18):
+            w = 0
+            for ch in s:
+                w += glutBitmapWidth(font, ord(ch))
+            return w
+        cx = WINDOW_W // 2
+        cy = WINDOW_H // 2
+        draw_text(cx - _bitmap_width(title)//2, cy + 12, title)
+        draw_text(cx - _bitmap_width(hint)//2,  cy - 12, hint)
+        glEnable(GL_DEPTH_TEST)
+        glPopMatrix()
+        glMatrixMode(GL_PROJECTION)
+        glPopMatrix()
+        glMatrixMode(GL_MODELVIEW)
+    glutSwapBuffers()
 
 
 def main():
