@@ -35,7 +35,7 @@ keys_down = set()
 MOVE_SPEED = 400.0
 TURN_SPEED = 100.0
 ## Camera (third-person)
-= 140.0
+follow_dist = 140.0
 follow_height = 140.0
 cam_x, cam _y, cam_z = 0.0, -400.0, 250.0
 
@@ -68,6 +68,49 @@ GRENADE_EXPLOSION_RADIUS = 300.0
 explosions = []
 EXPLOSION_TTL = 0.60
 
+## Enemy variables
+enemies = []
+wave = 1
+ENEMY_BASE_SPEED = 80.0
+ENEMY_RADIUS = 40.0
+ENEMY_BASE_HP = 2
+SPAWN_BOX = GRID_LENGTH - 120
+enemy_spin_phase = 0.0
+ENEMY_CONTACT_DAMAGE = {
+    "drone": 8,  
+    "grunt": 12,  
+    "brute": 24  
+}
+## Pickups
+pickups = []
+PICKUP_RADIUS = 24.0
+pickup_bob_phase = 0.0
+PICKUP_FLOAT_BASE_Z = 28.0
+PICKUP_BOB_AMPLITUDE = 10.0
+
+# Timed weapon spawns
+GUN_SPAWN_INTERVAL = 15.0
+gun_spawn_timer = 0.0
+MAX_WEAPON_PICKUPS = 4
+
+## Rocks
+ROCKS = []
+NUM_ROCKS = 18
+ROCK_MIN, ROCK_MAX = 60, 140
+
+## Score Variables
+score = 0
+paused = False
+game_over = False
+
+## Laser variables
+LASER_INTERVAL = 30.0
+LASER_SWEEP_TIME = 5.0
+LASER_THICKNESS = 120.0
+LASER_GLOW_THICKNESS = 180.0
+laser_timer = LASER_INTERVAL
+laser_active = False
+laser_t = 0.0
 
 
 
