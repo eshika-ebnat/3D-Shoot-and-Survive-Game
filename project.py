@@ -112,6 +112,97 @@ laser_timer = LASER_INTERVAL
 laser_active = False
 laser_t = 0.0
 
+## Drawing Functions
+
+# Draw text on screen
+def draw_text(x, y, text, font=GLUT_BITMAP_HELVETICA_18):
+    glColor3f(1,1,1)
+    glMatrixMode(GL_PROJECTION)
+    glPushMatrix()
+    glLoadIdentity()
+    gluOrtho2D(0, WINDOW_W, 0, WINDOW_H)
+    glMatrixMode(GL_MODELVIEW)
+    glPushMatrix()
+    glLoadIdentity()
+    glRasterPos2f(x, y)
+    for ch in text:
+        glutBitmapCharacter(font, ord(ch))
+    glPopMatrix()
+    glMatrixMode(GL_PROJECTION)
+    glPopMatrix()
+    glMatrixMode(GL_MODELVIEW)
+
+def forward_vec(deg):
+    r = math.radians(deg)
+    return (-math.sin(r), math.cos(r))  
+
+def clamp2D(x, y):
+    half = GRID_LENGTH - 20
+    return max(-half, min(half, x)), max(-half, min(half, y))
+
+def dist2(x1,y1,x2,y2):
+    dx, dy = x1-x2, y1-y2
+    return dx*dx + dy*dy
+
+def hash01(x, y):
+    return 0.5 + 0.5 * math.sin(x*12.9898 + y*78.233)
+
+## Grass and Rocks
+def draw_grass_tuft(x, y):
+    q = gluNewQuadric()
+    glPushMatrix()
+    glTranslatef(x, y, 8.0)
+    for i, ang in enumerate((0, 25, -25)):
+        glPushMatrix()
+        glRotatef(ang, 0, 0, 1)
+        glRotatef(-90, 1, 0, 0)
+        glColor3f(0.12 + 0.02*i, 0.55 + 0.04*i, 0.18)
+        gluCylinder(q, 0.9, 0.6, 18.0 + 2.0*i, 8, 1)
+        glPopMatrix()
+    glPushMatrix()
+    glTranslatef(0, 0, 18.0)
+    glColor3f(0.12, 0.55, 0.18)
+    glutSolidSphere(2.0, 10, 8)
+    glPopMatrix()
+    glPopMatrix()
+
+def draw_grass_ground():
+    step = 200
+    half = GRID_LENGTH
+    for iy in range(-half, half, step):
+        for ix in range(-half, half, step):
+            cx = ix + step * 0.5
+            cy = iy + step * 0.5
+            chk = ((ix // step) + (iy // step)) & 1
+            v = hash01(ix * 0.01, iy * 0.01)
+            base_g = 0.35 if chk == 0 else 0.42
+            g = base_g + (v - 0.5) * 0.10
+            r = 0.07 + (v - 0.5) * 0.02
+            b = 0.06 + (v - 0.5) * 0.015
+
+            glPushMatrix()
+            glTranslatef(cx, cy, 0.0)
+            glScalef(1.0, 1.0, 0.04)
+            glColor3f(max(0.0, r), max(0.0, g), max(0.0, b))
+            glutSolidCube(step)
+            glPopMatrix()
+
+            if hash01(ix * 0.2, iy * 0.2) > 0.86:
+                ox = (hash01(ix + 1.7, iy + 3.1) - 0.5) * (step * 0.4)
+                oy = (hash01(ix + 5.3, iy + 2.9) - 0.5) * (step * 0.4)
+                draw_grass_tuft(cx + ox, cy + oy)
+
+GROUND_BASE_Z = 4.0  # top surface grass tiles
+
+
+def ground_height_at(x, y):
+    h = GROUND_BASE_Z
+    for r in ROCKS:
+        s = r["size"]
+        half = s * 0.5
+        if abs(x - r["x"]) <= half and abs(y - r["y"]) <= half:
+            h = max(h, s)  # rock top z = s
+    return h
 
 
 
