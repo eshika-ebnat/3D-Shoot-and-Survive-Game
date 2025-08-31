@@ -791,7 +791,8 @@ def draw_floor_ammo():
         glColor3f(0.75, 0.38, 0.12)
         gluSphere(q, 1.9, 10, 8)
         glPopMatrix()
-        def draw_pickup(p):
+
+def draw_pickup(p):
     glPushMatrix()
     local_phase = pickup_bob_phase + (p["x"] + p["y"]) * 0.005
     bob = PICKUP_BOB_AMPLITUDE * math.sin(local_phase * 2.0)
@@ -857,6 +858,92 @@ def draw_explosions():
             glColor3f(0.55, 0.48, 0.42)
             glutSolidCube(1.0)
             glPopMatrix()
+
+#### Draw Laser and Scope ####
+def show_scope_overlay():
+    if not scope_active:
+        return
+    glMatrixMode(GL_PROJECTION); glPushMatrix(); glLoadIdentity(); gluOrtho2D(0, WINDOW_W, 0, WINDOW_H)
+    glMatrixMode(GL_MODELVIEW);  glPushMatrix(); glLoadIdentity()
+    glDisable(GL_DEPTH_TEST)
+    cx, cy = WINDOW_W // 2, WINDOW_H // 2
+    r = int(min(WINDOW_W, WINDOW_H) * (0.18 if first_person else 0.22))
+    SEG = 64
+    glColor3f(0.95, 0.95, 0.95)
+    glBegin(GL_LINE_LOOP)
+    for i in range(SEG):
+        ang = 2.0 * math.pi * i / SEG
+        glVertex2f(cx + r * math.cos(ang), cy + r * math.sin(ang))
+    glEnd()
+    tick = 16
+    glBegin(GL_LINES)
+    glVertex2f(cx - r, cy)
+    glVertex2f(cx - r + tick, cy)
+    glVertex2f(cx + r - tick, cy)
+    glVertex2f(cx + r, cy)
+    glVertex2f(cx, cy - r)
+    glVertex2f(cx, cy - r + tick)
+    glVertex2f(cx, cy + r - tick)
+    glVertex2f(cx, cy + r)
+    glEnd()
+    s = 4
+    glColor3f(1.0, 0.0, 0.0)
+    glBegin(GL_QUADS)
+    glVertex2f(cx - s, cy - s)
+    glVertex2f(cx + s, cy - s)
+    glVertex2f(cx + s, cy + s)
+    glVertex2f(cx - s, cy + s)
+    glEnd()
+    glEnable(GL_DEPTH_TEST)
+    glPopMatrix()
+    glMatrixMode(GL_PROJECTION)
+    glPopMatrix()
+    glMatrixMode(GL_MODELVIEW)
+
+def draw_laser_sweep():
+    if not laser_active:
+        return
+    u = max(0.0, min(1.0, laser_t / LASER_SWEEP_TIME))
+    x = -GRID_LENGTH + (2.0 * GRID_LENGTH) * u
+    glDisable(GL_DEPTH_TEST)
+    glPushMatrix()
+    glTranslatef(x, 0.0, 8.0)
+    glScalef(LASER_THICKNESS, GRID_LENGTH * 2.2, 6.0)
+    glColor3f(1.00, 0.10, 0.10)
+    glutSolidCube(1.0)
+    glPopMatrix()
+    glPushMatrix()
+    glTranslatef(x, 0.0, 9.5)
+    glScalef(LASER_GLOW_THICKNESS * 0.5, GRID_LENGTH * 2.2, 3.5)
+    glColor3f(1.00, 0.55, 0.08)
+    glutSolidCube(1.0)
+    glPopMatrix()
+    glEnable(GL_DEPTH_TEST)
+
+def laser_positions():
+    minX = -GRID_LENGTH + 80.0
+    maxX =  GRID_LENGTH - 80.0
+    u = max(0.0, min(1.0, laser_t / LASER_SWEEP_TIME))
+    xL = minX + (maxX - minX) * u
+    xR = minX + (maxX - minX) * u
+    return xL, xR
+
+def laser_kill():
+    global health
+    if game_over or not laser_active:
+        return
+    ground_here = ground_height_at(player_pos[0], player_pos[1])
+    on_rock = ground_here > (GROUND_BASE_Z + 1.0)
+    feet_on_ground = (abs(player_pos[2] - ground_here) < 2.0) and player_on_ground
+    if on_rock or not feet_on_ground:
+        return
+    half_bar = LASER_THICKNESS * 0.5
+    px = player_pos[0]
+    xL, xR = laser_positions()
+    touch = (abs(px - xL) <= (half_bar)) or (abs(px - xR) <= (half_bar))
+    if touch:
+        health = 0
+        end_game()
 
 
 
