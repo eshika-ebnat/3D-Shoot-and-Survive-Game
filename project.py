@@ -16,6 +16,25 @@ first_person = False
 scope_active = False
 fire_pressed = False  # fire cooldown
 
+## Player variables
+player_pos = [0.0, 0.0, 10.0]
+player_angle = 0.0
+player_on_ground = True
+vz = 0.0
+GRAVITY = -1800.0
+JUMP_VELOCITY = 700.0
+MOVE_STEP = 28.0
+STEP_MAX = 12.0
+PLAYER_RADIUS = 26.0  
+health = 100
+max_health = 100
+landing_flash = 0.0
+
+## player movement
+keys_down = set()
+MOVE_SPEED = 400.0
+TURN_SPEED = 100.0
+
 
 
 
