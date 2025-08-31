@@ -791,6 +791,73 @@ def draw_floor_ammo():
         glColor3f(0.75, 0.38, 0.12)
         gluSphere(q, 1.9, 10, 8)
         glPopMatrix()
+        def draw_pickup(p):
+    glPushMatrix()
+    local_phase = pickup_bob_phase + (p["x"] + p["y"]) * 0.005
+    bob = PICKUP_BOB_AMPLITUDE * math.sin(local_phase * 2.0)
+    spin_deg = (local_phase * 90.0) % 360.0
+    glTranslatef(p["x"], p["y"], p["z"] + 70 + bob)
+    glRotatef(spin_deg, 0, 0, 1)
+    t = p["type"]
+    if t == "pistol":  draw_floor_pistol()
+    elif t == "rifle": draw_floor_rifle()
+    elif t == "machine_gun": draw_floor_machine_gun()
+    elif t == "rocket": draw_floor_rocket_launcher()
+    else:
+        if t == "ammo":   draw_floor_ammo()
+        elif t == "health": draw_floor_health()
+        else:
+            glColor3f(0.3, 0.7, 1.0)
+            glutSolidCube(20)
+    glPopMatrix()
+
+## Draw Explosions
+def draw_explosions():
+    if not explosions:
+        return
+    q = gluNewQuadric()
+    for ex in explosions:
+        u = max(0.0, min(1.0, ex["t"] / ex["ttl"]))
+        R = ex["r0"] + (ex["r1"] - ex["r0"]) * u
+        core_r = max(12.0, R * 0.30)
+        hot  = (1.00, 0.90, 0.20)
+        cool = (0.40, 0.35, 0.35)
+        cr = hot[0]*(1.0-u) + cool[0]*u
+        cg = hot[1]*(1.0-u) + cool[1]*u
+        cb = hot[2]*(1.0-u) + cool[2]*u
+        glPushMatrix()
+        glTranslatef(ex["x"], ex["y"], ex["z"] + 10.0 + 40.0*u)
+        glColor3f(cr, cg, cb)
+        gluSphere(q, core_r, 18, 14)
+        glPopMatrix()
+        glPushMatrix()
+        glTranslatef(ex["x"], ex["y"], ex["z"] + 6.0 + 30.0*u)
+        glColor3f(0.95*(1.0-u) + 0.30*u, 0.35*(1.0-u) + 0.10*u, 0.08)
+        gluSphere(q, max(core_r*1.25, R*0.45), 14, 12)
+        glPopMatrix()
+        ring_h = 3.0
+        for k, scale in enumerate((0.7, 1.0, 1.3)):
+            ring_r = max(10.0, R * 0.50 * scale)
+            glPushMatrix()
+            glTranslatef(ex["x"], ex["y"], ex["z"] + 0.5)
+            if k == 0:   glColor3f(1.00, 0.45, 0.12)
+            elif k == 1: glColor3f(0.90, 0.30, 0.10)
+            else:        glColor3f(0.65, 0.18, 0.08)
+            gluCylinder(q, ring_r, ring_r, ring_h, 32, 1)
+            glPopMatrix()
+        debris_s = max(1.5, 6.0*(1.0-u))
+        for ang in (0.0, math.pi*0.5, math.pi, math.pi*1.5):
+            dx, dy = math.cos(ang), math.sin(ang)
+            px = ex["x"] + dx * (R * 0.6)
+            py = ex["y"] + dy * (R * 0.6)
+            pz = ex["z"] + 20.0 + 60.0 * (1.0 - u)
+            glPushMatrix()
+            glTranslatef(px, py, pz)
+            glScalef(debris_s, debris_s, debris_s)
+            glColor3f(0.55, 0.48, 0.42)
+            glutSolidCube(1.0)
+            glPopMatrix()
+
 
 
 
