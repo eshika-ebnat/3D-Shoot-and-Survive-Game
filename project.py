@@ -945,6 +945,29 @@ def laser_kill():
         health = 0
         end_game()
 
+#### Camera Setup ####
+def setupCamera():
+    glMatrixMode(GL_PROJECTION); glLoadIdentity()
+    fov = fovY_default
+    if scope_active: fov = fovY_zoom if first_person else fovY_zoom_3p
+    gluPerspective(fov, ASPECT, 0.1, 4000.0)
+    glMatrixMode(GL_MODELVIEW)
+    glLoadIdentity()
+    if first_person:
+        fx, fy = forward_vec(player_angle)
+        rx, ry = fy, -fx
+        eye_x = player_pos[0] + fx * 50 + rx * 3
+        eye_y = player_pos[1] + fy * 50 + ry * 3
+        eye_z = player_pos[2] + 100
+        center_x = eye_x + fx * 600
+        center_y = eye_y + fy * 600
+        center_z = eye_z
+        gluLookAt(eye_x, eye_y, eye_z, center_x, center_y, center_z, 0, 0, 1)
+    else:
+        gluLookAt(cam_x, cam_y, cam_z,
+                  player_pos[0], player_pos[1], player_pos[2] + 110,
+                  0, 0, 1)
+
 
 
 
