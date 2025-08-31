@@ -37,7 +37,7 @@ TURN_SPEED = 100.0
 ## Camera (third-person)
 follow_dist = 140.0
 follow_height = 140.0
-cam_x, cam _y, cam_z = 0.0, -400.0, 250.0
+cam_x, cam_y, cam_z = 0.0, -400.0, 250.0
 
 ## Weapons and Ammo Details
 weapons = {
@@ -203,6 +203,227 @@ def ground_height_at(x, y):
         if abs(x - r["x"]) <= half and abs(y - r["y"]) <= half:
             h = max(h, s)  # rock top z = s
     return h
+
+# Helper rockss
+def rock_at_point(x, y):
+    best = None
+    best_h = -1.0
+    for r in ROCKS:
+        half = r["size"] * 0.5
+        if abs(x - r["x"]) <= half and abs(y - r["y"]) <= half:
+            if r["size"] > best_h:
+                best_h = r["size"]
+                best = r
+    return best
+
+# Player vs rock collision 
+def resolve_player_vs_rocks(nx, ny, pz, stepping_target_rock=None):
+    for r in ROCKS:
+        if r is stepping_target_rock:
+            continue
+
+        top_z = r["size"]
+        if pz >= top_z - 1.0:
+            continue
+
+        half = r["size"] * 0.5
+        minx = r["x"] - half - PLAYER_RADIUS
+        maxx = r["x"] + half + PLAYER_RADIUS
+        miny = r["y"] - half - PLAYER_RADIUS
+        maxy = r["y"] + half + PLAYER_RADIUS
+
+        if (nx >= minx and nx <= maxx and ny >= miny and ny <= maxy):
+            dx_left   = nx - minx
+            dx_right  = maxx - nx
+            dy_bottom = ny - miny
+            dy_top    = maxy - ny
+            m = min(dx_left, dx_right, dy_bottom, dy_top)
+            if m == dx_left:
+                nx = minx
+            elif m == dx_right:
+                nx = maxx
+            elif m == dy_bottom:
+                ny = miny
+            else:
+                ny = maxy
+    return nx, ny
+
+# Rocks
+def draw_rocks():
+    q = gluNewQuadric()
+    for r in ROCKS:
+        s = r["size"]
+        x, y = r["x"], r["y"]
+        top = s * 0.5
+        tone = 0.5 + 0.12 * hash01(x * 0.01, y * 0.01)
+        cR = tone * 0.9; cG = tone; cB = tone * 0.72
+
+        glPushMatrix()
+        glTranslatef(x, y, top)
+        glColor3f(cR, cG, cB)
+        glutSolidCube(s)
+        glPopMatrix()
+
+        r1 = s * (0.28 + 0.06 * hash01(x + 11.0, y + 5.0))
+        r2 = s * (0.24 + 0.06 * hash01(x + 7.0,  y + 13.0))
+        o1x = (hash01(x + 2.0,  y + 3.0) - 0.5) * s * 0.35
+        o1y = (hash01(x + 17.0, y + 9.0) - 0.5) * s * 0.35
+        o2x = (hash01(x + 23.0, y + 19.0) - 0.5) * s * 0.30
+        o2y = (hash01(x + 31.0, y + 29.0) - 0.5) * s * 0.30
+
+        glPushMatrix()
+        glTranslatef(x + o1x, y + o1y, top + s * 0.10)
+        glColor3f(cR*0.99, cG*0.45, cB*0.25)
+        gluSphere(q, r1, 16, 12)
+        glPopMatrix()
+
+        glPushMatrix()
+        glTranslatef(x + o2x, y + o2y, top + s * 0.05)
+        glColor3f(cR*1.02, cG*1.02, cB*1.02)
+        gluSphere(q, r2, 16, 12)
+        glPopMatrix()
+
+        glPushMatrix()
+        glTranslatef(x, y, s * 0.35)
+        glRotatef(-90, 1, 0, 0)
+        glColor3f(cR*0.92, cG*0.92, cB*0.92)
+        gluCylinder(q, s*0.20, s*0.22, s*0.30, 12, 1)
+        glPopMatrix()
+
+        if hash01(x * 0.5, y * 0.5) > 0.7:
+            mcount = 2 + int(hash01(x + 4.0, y + 6.0) * 3)
+            for i in range(mcount):
+                mx = (hash01(x + i*3.3, y + i*1.7) - 0.5) * s * 0.25
+                my = (hash01(x + i*5.1, y + i*2.9) - 0.5) * s * 0.25
+                mr = s * (0.04 + 0.02 * hash01(x + i*7.7, y + i*9.1))
+                glPushMatrix()
+                glTranslatef(x + mx, y + my, s - mr*0.6)
+                glColor3f(0.14, 0.36 + 0.10*hash01(x+i, y-i), 0.18)
+                glutSolidSphere(mr, 10, 8)
+                glPopMatrix()
+
+## Lifebar
+def draw_lifebar_world(x, y, z, ratio, w=60.0, h=10.0):
+    ratio = max(0.0, min(1.0, ratio))
+    glDisable(GL_DEPTH_TEST)
+    glPushMatrix()
+    glTranslatef(x, y, z)
+    glColor3f(0.10, 0.10, 0.10)
+    glBegin(GL_QUADS)
+    glVertex3f(-w/2 - 2, -2, 0)
+    glVertex3f(w/2 + 2, -2, 0)
+    glVertex3f(w/2 + 2, h + 2, 0)
+    glVertex3f(-w/2 - 2, h + 2, 0)
+    glEnd()
+
+    glColor3f(0.28, 0.02, 0.02)
+    glBegin(GL_QUADS)
+    glVertex3f(-w/2, 0, 0)
+    glVertex3f(w/2, 0, 0)
+    glVertex3f(w/2, h, 0)
+    glVertex3f(-w/2, h, 0)
+    glEnd()
+
+    glColor3f(0.12, 0.90, 0.35)
+    ww = ratio * w
+    glBegin(GL_QUADS)
+    glVertex3f(-w/2, 0, 0)
+    glVertex3f(-w/2 + ww, 0, 0)
+    glVertex3f(-w/2 + ww, h, 0)
+    glVertex3f(-w/2, h, 0)
+    glEnd()
+
+    glPopMatrix()
+    glEnable(GL_DEPTH_TEST)
+
+## Draw Player and Enemies
+def draw_player():
+    q = gluNewQuadric()
+    SHIRT  = (0.10, 0.35, 0.95)
+    SLEEVE = (0.98, 0.55, 0.10)
+    PANTS  = (0.62, 0.35, 0.25)
+    SKIN   = (0.96, 0.82, 0.68)
+    BARREL = (0.50, 0.50, 0.55)
+
+    glPushMatrix()
+    glTranslatef(player_pos[0], player_pos[1], max(0.0, player_pos[2]))
+    glRotatef(player_angle, 0, 0, 1)
+
+    torso_size = 40.0
+    glPushMatrix()
+    glTranslatef(0, 0, 72)
+    glScalef(1.0, 0.60, 1.10)
+    glColor3f(*SHIRT)
+    glutSolidCube(torso_size)
+    glPopMatrix()
+
+    torso_half_w = (torso_size * 1.0) * 0.5
+    torso_half_h = (torso_size * 1.10) * 0.5
+
+    glPushMatrix()
+    glTranslatef(0, 0, 72 + torso_half_h + 12)
+    glColor3f(0,0,0)
+    gluSphere(q, 14, 16, 12)
+    glPopMatrix()
+
+    hip_z = 20 - torso_half_h + 2
+    leg_h = 40.0; leg_r = 8.0; hip_x = 14.0
+    for sgn in (-1, 1):
+        glPushMatrix()
+        glTranslatef(sgn*hip_x, 0, hip_z)
+        glColor3f(*PANTS)
+        gluCylinder(q, leg_r, leg_r, leg_h, 14, 1)
+        glPopMatrix()
+
+    shoulder_z = 68 + torso_half_h - 8
+    arm_len    = 35.0; arm_r = 6.5
+    shoulder_x = torso_half_w + arm_r*0.6+1
+    inward_deg = 155.0
+
+    glPushMatrix()
+    glTranslatef(-shoulder_x, 20, shoulder_z)
+    glRotatef(90, 1, 0, 0)
+    glRotatef(inward_deg, 0, 1, 0)
+    glColor3f(*SLEEVE)
+    gluCylinder(q, arm_r, arm_r, arm_len, 25, 8)
+    glTranslatef(-shoulder_x+30, arm_len-30, shoulder_z-39)
+    glColor3f(*SKIN)
+    gluSphere(q, arm_r*1.2, 14, 12)
+    glPopMatrix()
+
+    glPushMatrix()
+    glTranslatef( shoulder_x, 20, shoulder_z)
+    glRotatef(90, 1, 0, 0)
+    glRotatef(-inward_deg, 0, 1, 0)
+    glColor3f(*SLEEVE)
+    gluCylinder(q, arm_r, arm_r, arm_len, 25, 8)
+    glTranslatef(shoulder_x-30, arm_len-30, shoulder_z-39)
+    glColor3f(*SKIN)
+    gluSphere(q, arm_r*1.2, 14, 12)
+    glPopMatrix()
+
+    gun_y = arm_len+20
+    gun_z = shoulder_z
+    glPushMatrix()
+    glTranslatef(0, gun_y, gun_z)
+    glRotatef(90, 0, 0, 1)
+    glScalef(1.0, 0.25, 0.45)
+    glColor3f(*BARREL)
+    glutSolidCube(24)
+    glPopMatrix()
+    glPushMatrix()
+    glTranslatef(0, gun_y+7, gun_z)
+    glRotatef(-90, 1, 0, 0)
+    glColor3f(*BARREL)
+    gluCylinder(q, 6.0, 3.0, 28.0, 12, 1)
+    glPopMatrix()
+
+    glPopMatrix()
+
+    glDisable(GL_DEPTH_TEST)
+    head_z = player_pos[2] + 128
+    draw_lifebar_world(player_pos[0], player_pos[1], head_z, health/max_health, w=70.0, h=10.0)
+    glEnable(GL_DEPTH_TEST)
 
 
 
