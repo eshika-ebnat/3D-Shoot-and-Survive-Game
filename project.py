@@ -967,6 +967,312 @@ def setupCamera():
         gluLookAt(cam_x, cam_y, cam_z,
                   player_pos[0], player_pos[1], player_pos[2] + 110,
                   0, 0, 1)
+        
+### Enemy and Pickup Spawning ###
+def random_spawn_xy():
+    return (random.randint(-SPAWN_BOX, SPAWN_BOX),
+            random.randint(-SPAWN_BOX, SPAWN_BOX))
+
+def start_wave(k):
+    enemies.clear()
+    count = 5 + (k-1)*3
+    for _ in range(count):
+        sx, sy = random_spawn_xy()
+        etype = random.choice(["grunt", "drone", "brute"])
+        base_hp = ENEMY_BASE_HP + (k//2)
+        spd = ENEMY_BASE_SPEED + (k-1)*12.0
+        if etype == "drone":
+            r = ENEMY_RADIUS - 6;  hp = base_hp;     spd += 30.0
+        elif etype == "brute":
+            r = ENEMY_RADIUS + 10; hp = base_hp + 3; spd -= 25.0
+        else:
+            r = ENEMY_RADIUS;      hp = base_hp
+        enemies.append({
+            "x": sx, "y": sy,
+            "z": ground_height_at(sx, sy) + r,
+            "r": r, "hp": float(hp), "maxhp": float(hp),
+            "speed": max(80.0, spd),
+            "type": etype
+        })
+
+def spawn_pickup_at(x, y, t=None):
+    if t is None:
+        t = random.choice(["ammo", "health", "rifle", "machine_gun"])
+    pickups.append({"x": x, "y": y, "z": 0.0, "type": t})
+
+def spawn_weapon_pickup_randomly():
+    active_weapons = sum(1 for p in pickups if p["type"] in ("rifle","machine_gun","rocket"))
+    if active_weapons >= MAX_WEAPON_PICKUPS: return
+    wtype = random.choice(["rifle", "machine_gun", "rocket"])
+    for _ in range(40):
+        x = random.randint(-GRID_LENGTH+120, GRID_LENGTH-120)
+        y = random.randint(-GRID_LENGTH+120, GRID_LENGTH-120)
+        if dist2(x, y, player_pos[0], player_pos[1]) > (300**2):
+            spawn_pickup_at(x, y, t=wtype); return
+    x = random.randint(-GRID_LENGTH+120, GRID_LENGTH-120)
+    y = random.randint(-GRID_LENGTH+120, GRID_LENGTH-120)
+    spawn_pickup_at(x, y, t=wtype)
+
+def spawn_health_pickup_randomly():
+    active_health = sum(1 for p in pickups if p["type"] == "health")
+    if active_health >= 3: return
+    for _ in range(40):
+        x = random.randint(-GRID_LENGTH+120, GRID_LENGTH-120)
+        y = random.randint(-GRID_LENGTH+120, GRID_LENGTH-120)
+        if dist2(x, y, player_pos[0], player_pos[1]) > (280**2):
+            spawn_pickup_at(x, y, t="health"); return
+    x = random.randint(-GRID_LENGTH+120, GRID_LENGTH-120)
+    y = random.randint(-GRID_LENGTH+120, GRID_LENGTH-120)
+    spawn_pickup_at(x, y, t="health")
+
+def gen_rocks():
+    ROCKS.clear()
+    for _ in range(NUM_ROCKS):
+        while True:
+            rx = random.randint(-GRID_LENGTH+200, GRID_LENGTH-200)
+            ry = random.randint(-GRID_LENGTH+200, GRID_LENGTH-200)
+            if dist2(rx, ry, 0.0, 0.0) > 420**2: break
+        s = random.randint(ROCK_MIN, ROCK_MAX)
+        ROCKS.append({"x": rx, "y": ry, "size": float(s)})
+
+### Player Actions ###
+def try_fire():
+    global ammo_in_mag, fire_cooldown, score, ammo_in_mag_by_weapon
+    if game_over or paused or reloading: return
+    if fire_cooldown > 0.0: return
+    if ammo_in_mag <= 0: return
+    w = weapons[current_weapon]
+    ammo_in_mag -= 1
+    ammo_in_mag_by_weapon[current_weapon] = ammo_in_mag
+    fire_cooldown = w["fire_cd"]
+    fx, fy = forward_vec(player_angle)
+    if first_person:
+        rx, ry = fy, -fx
+        eye_x = player_pos[0] + fx * 18 + rx * 3
+        eye_y = player_pos[1] + fy * 18 + ry * 3
+        eye_z = player_pos[2] + 90
+        tip_x, tip_y, tip_z = eye_x + fx*24, eye_y + fy*24, eye_z
+    else:
+        tip_x = player_pos[0] + fx*90
+        tip_y = player_pos[1] + fy*90
+        tip_z = player_pos[2] + 60
+
+    if w["type"] == "bullet":
+        bullets.append({
+            "x": tip_x, "y": tip_y, "z": tip_z,
+            "dx": fx, "dy": fy, "dz": 0.0,
+            "speed": w["bullet_spd"], "alive": True,
+            "ttl": 2.2, "dmg": w["dmg"]
+        })
+    else:
+        rockets.append({
+            "x": tip_x, "y": tip_y, "z": tip_z,
+            "dx": fx, "dy": fy, "dz": 0.0,
+            "speed": w["bullet_spd"], "alive": True,
+            "ttl": 2.5
+        })
+
+def try_reload():
+    global reloading, reload_timer
+    if game_over or paused or reloading: return
+    if ammo_in_mag == weapons[current_weapon]["mag"]: return
+    if ammo_reserve[current_weapon] <= 0: return
+    reloading = True; reload_timer = reload_time
+
+def try_throw_grenade():
+    if game_over or paused: return
+    fx, fy = forward_vec(player_angle)
+    grenades.append({
+        "x": player_pos[0] + fx*60, "y": player_pos[1] + fy*60,
+        "z": player_pos[2] + 80,
+        "vx": fx*GRENADE_THROW_SPEED, "vy": fy*GRENADE_THROW_SPEED, "vz": 500.0,
+        "alive": True, "timer": 0.0, "exploded": False, "exptime": GRENADE_FUSE
+    })
+
+def apply_explosion(cx, cy, radius):
+    global score, explosions
+    explosions.append({
+        "x": cx, "y": cy, "z": ground_height_at(cx, cy) + 6.0,
+        "t": 0.0, "ttl": EXPLOSION_TTL, "r0": 20.0, "r1": radius
+    })
+    r2 = radius * radius
+    for e in enemies:
+        d2 = dist2(cx, cy, e["x"], e["y"])
+        if d2 <= r2:
+            dist = math.sqrt(d2)
+            dmg = 16.0 * max(0.0, 1.0 - dist / radius) + 4.0
+            e["hp"] -= dmg
+    for e in enemies:
+        if e["hp"] <= 0.0:
+            score += 1
+            if random.random() < 0.25: spawn_pickup_at(e["x"], e["y"])
+            e["x"], e["y"] = random_spawn_xy()
+            e["z"] = 0.0
+            e["hp"] = e["maxhp"]
+
+### Enemy and Bullet Movement ###
+def move_enemies(dt):
+    global health, game_over,ENEMY_RADIUS,ENEMY_CONTACT_DAMAGE
+    for e in enemies:
+        ang = math.atan2(player_pos[0] - e["x"], player_pos[1] - e["y"])
+        fx, fy = math.sin(ang), math.cos(ang)
+        e["x"] += fx * e["speed"] * dt
+        e["y"] += fy * e["speed"] * dt
+        e["z"] = ground_height_at(e["x"], e["y"]) + e["r"]
+        if dist2(e["x"], e["y"], player_pos[0], player_pos[1]) <= (e["r"] + 26.0)**2 and not game_over:
+            et = e.get("type", "grunt")
+            dmg = ENEMY_CONTACT_DAMAGE.get(et, max(10, int(12 * (e["r"] / ENEMY_RADIUS))))
+            health -= dmg
+
+            sx, sy = random_spawn_xy()
+            e["x"], e["y"] = sx, sy
+            e["z"] = ground_height_at(sx, sy) + e["r"]
+            if health <= 0: end_game()
+
+def move_bullets(dt):
+    global enemies, score
+    for b in bullets:
+        if not b["alive"]: continue
+        b["x"] += b["dx"]*b["speed"]*dt
+        b["y"] += b["dy"]*b["speed"]*dt
+        b["ttl"] -= dt
+        if abs(b["x"]) > GRID_LENGTH or abs(b["y"]) > GRID_LENGTH or b["ttl"] <= 0:
+            b["alive"] = False; continue
+
+        #stop bullets hit rocks
+        hit_rock = False
+        for r in ROCKS:
+            half = r["size"] * 0.5
+            if (abs(b["x"] - r["x"]) <= half + BULLET_RADIUS and
+                abs(b["y"] - r["y"]) <= half + BULLET_RADIUS and
+                b["z"] <= r["size"] + BULLET_RADIUS):
+                hit_rock = True
+                break
+        if hit_rock:
+            b["alive"] = False
+            continue
+
+        for e in enemies:
+            if dist2(b["x"], b["y"], e["x"], e["y"]) <= (e["r"]+8)**2:
+                e["hp"] -= b["dmg"]; b["alive"] = False
+                if e["hp"] <= 0:
+                    score += 1
+                    if random.random() < 0.15: spawn_pickup_at(e["x"], e["y"])
+                    sx, sy = random_spawn_xy()
+                    e["x"], e["y"] = sx, sy
+                    e["z"] = ground_height_at(sx, sy) + e["r"]
+                    e["hp"] = e["maxhp"]
+                break
+
+def move_rockets(dt):
+    for r in rockets:
+        if not r["alive"]: continue
+        r["x"] += r["dx"]*r["speed"]*dt
+        r["y"] += r["dy"]*r["speed"]*dt
+        r["ttl"] -= dt
+        exploded = False
+
+        if not exploded:
+            for rock in ROCKS:
+                half = rock["size"] * 0.5
+                if (abs(r["x"] - rock["x"]) <= half + 10.0 and
+                    abs(r["y"] - rock["y"]) <= half + 10.0 and
+                    r["z"] <= rock["size"] + 10.0):
+                    exploded = True
+                    break
+
+        if abs(r["x"]) > GRID_LENGTH or abs(r["y"]) > GRID_LENGTH or r["ttl"] <= 0:
+            exploded = True
+        if not exploded:
+            for e in enemies:
+                if dist2(r["x"], r["y"], e["x"], e["y"]) <= (e["r"]+12)**2:
+                    exploded = True; break
+        if exploded:
+            r["alive"] = False
+            apply_explosion(r["x"], r["y"], EXPLOSION_RADIUS)
+
+def move_grenades(dt):
+    for g in grenades:
+        if not g["alive"]: continue
+        g["timer"] += dt
+        g["x"] += g["vx"]*dt; g["y"] += g["vy"]*dt; g["z"] += g["vz"]*dt
+        g["vz"] += GRAVITY*dt
+        floor_h = ground_height_at(g["x"], g["y"]) + 10
+        if g["z"] <= floor_h:
+            g["z"] = floor_h; g["vz"] *= -0.35; g["vx"] *= 0.75; g["vy"] *= 0.75
+        if g["timer"] >= g["exptime"] and not g["exploded"]:
+            g["exploded"] = True; g["alive"] = False
+            apply_explosion(g["x"], g["y"], GRENADE_EXPLOSION_RADIUS)
+
+def update_reload_and_cooldowns(dt):
+    global reloading, reload_timer, ammo_in_mag, fire_cooldown, ammo_in_mag_by_weapon
+    if fire_cooldown > 0.0: fire_cooldown = max(0.0, fire_cooldown - dt)
+    if reloading:
+        reload_timer -= dt
+        if reload_timer <= 0.0:
+            mag_cap = weapons[current_weapon]["mag"]
+            need = mag_cap - ammo_in_mag
+            take = min(need, ammo_reserve[current_weapon])
+            ammo_in_mag += take
+            ammo_in_mag_by_weapon[current_weapon] = ammo_in_mag
+            ammo_reserve[current_weapon] -= take
+            reloading = False
+
+def update_explosions(dt):
+    keep = []
+    for ex in explosions:
+        ex["t"] += dt
+        if ex["t"] < ex["ttl"]: keep.append(ex)
+    explosions[:] = keep
+
+def collect_pickups():
+    global current_weapon, ammo_in_mag, ammo_reserve, health, owned_weapons, ammo_in_mag_by_weapon
+    keep = []
+    for p in pickups:
+        if dist2(p["x"], p["y"], player_pos[0], player_pos[1]) <= (PICKUP_RADIUS+26)**2:
+            if p["type"] in ("rifle", "machine_gun", "rocket"):
+                owned_weapons.add(p["type"])
+                current_weapon = p["type"]
+                ammo_in_mag_by_weapon[current_weapon] = weapons[current_weapon]["mag"]
+                ammo_in_mag = ammo_in_mag_by_weapon[current_weapon]
+            elif p["type"] == "ammo":
+                ammo_reserve["pistol"] += 20; ammo_reserve["rifle"] += 30
+                ammo_reserve["machine_gun"] += 60; ammo_reserve["rocket"] += 2
+            else: 
+                heal = int(max_health * 0.30 + 0.5)
+                health = min(max_health, health + heal)
+        else:
+            keep.append(p)
+    pickups[:] = keep
+
+def next_wave_if_cleared():
+    global wave
+    target = 12*wave
+    if score >= target:
+        wave += 1
+        start_wave(wave)
+
+def update_timed_spawns(dt):
+    global gun_spawn_timer
+    gun_spawn_timer -= dt
+    if gun_spawn_timer <= 0.0:
+        if random.random() < 0.35: spawn_health_pickup_randomly()
+        else: spawn_weapon_pickup_randomly()
+        gun_spawn_timer = GUN_SPAWN_INTERVAL
+
+def update_laser(dt):
+    global laser_timer, laser_active, laser_t
+    if not laser_active:
+        laser_timer -= dt
+        if laser_timer <= 0.0:
+            laser_active = True
+            laser_t = 0.0
+    else:
+        laser_t += dt
+        if laser_t >= LASER_SWEEP_TIME:
+            laser_active = False
+            laser_timer = LASER_INTERVAL
+
 
 
 
