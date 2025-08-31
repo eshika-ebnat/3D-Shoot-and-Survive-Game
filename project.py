@@ -34,6 +34,40 @@ landing_flash = 0.0
 keys_down = set()
 MOVE_SPEED = 400.0
 TURN_SPEED = 100.0
+## Camera (third-person)
+= 140.0
+follow_height = 140.0
+cam_x, cam _y, cam_z = 0.0, -400.0, 250.0
+
+## Weapons and Ammo Details
+weapons = {
+    "pistol":       {"mag": 12, "fire_cd": 0.22, "bullet_spd": 1200.0, "dmg": 1.0, "type": "bullet"},
+    "rifle":        {"mag": 30, "fire_cd": 0.10, "bullet_spd": 1600.0, "dmg": 0.7, "type": "bullet"},
+    "machine_gun":  {"mag": 60, "fire_cd": 0.05, "bullet_spd": 1800.0, "dmg": 0.5, "type": "bullet"},
+    "rocket":       {"mag": 4,  "fire_cd": 0.70, "bullet_spd": 1000.0, "dmg": 0.0, "type": "rocket"},
+}
+current_weapon = "pistol"
+owned_weapons = {"pistol"}
+ammo_in_mag_by_weapon = {"pistol": weapons["pistol"]["mag"], "rifle": 0, "machine_gun": 0, "rocket": 0}
+ammo_in_mag = ammo_in_mag_by_weapon[current_weapon]
+ammo_reserve = {"pistol": 72, "rifle": 120, "machine_gun": 180, "rocket": 12}
+reloading = False
+reload_time = 1.25
+reload_timer = 0.0
+fire_cooldown = 0.0
+bullets  = []
+rockets  = []
+BULLET_RADIUS = 6.0  
+
+## Grenades and Explosions
+grenades = []
+GRENADE_THROW_SPEED = 700.0
+GRENADE_FUSE = 1.2
+EXPLOSION_RADIUS = 220.0
+GRENADE_EXPLOSION_RADIUS = 300.0
+explosions = []
+EXPLOSION_TTL = 0.60
+
 
 
 
